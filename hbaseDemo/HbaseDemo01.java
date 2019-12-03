@@ -3,6 +3,7 @@ package com.datatist.hbaseDemo;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.filter.*;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.After;
 import org.junit.Before;
@@ -14,10 +15,12 @@ import java.util.List;
 
 //操作数据库  第一步：获取连接  第二步：获取客户端对象   第三步：操作数据库  第四步：关闭
 public class HbaseDemo01 {
-    public static void main(String[] args) throws IOException {
 
+
+    @Test
+    public void createTable() throws IOException {
         Configuration conf = HBaseConfiguration.create();
-        conf.set("hbase.zookeeper.quorum","node01:2181,node02:2181");
+        conf.set("hbase.zookeeper.quorum", "node01:2181,node02:2181");
         Connection conn = ConnectionFactory.createConnection(conf);
         //获取管理员对象，来对数据库进行DDL得操作
         Admin admin = conn.getAdmin();
@@ -32,16 +35,18 @@ public class HbaseDemo01 {
         admin.createTable(hTableDescriptor);
         admin.close();
         conn.close();
-
     }
+
+
 
     private Connection connection;
     private final String TABLE_NAME = "myuser";
     private Table table;
 
     @After
-    public void close(){
-
+    public void close() throws IOException {
+        table.close();
+        connection.close();
     }
 
     @Before
@@ -182,4 +187,159 @@ public class HbaseDemo01 {
         }
         table.close();
     }
+    /**
+     * 不知道rowkey的具体的值，但是有个范围0003 到 0006
+     * select * from myuser where age > 30 and id <8 and name like 'zhangsan'
+     */
+
+    @Test
+    public void scanData() throws IOException {
+        Table table = connection.getTable(TableName.valueOf(TABLE_NAME));
+        Scan scan = new Scan();//没有指定startRow和stopRow全表扫描
+
+        //扫描f1列族
+        scan.addFamily("f1".getBytes());
+
+        //扫描f2列族phone字段
+        scan.addColumn("f2".getBytes(),"phone".getBytes());
+
+        scan.setStartRow("0003".getBytes());
+        scan.setStopRow("0006".getBytes());
+
+        ResultScanner scanner = table.getScanner(scan);
+        for (Result result : scanner) {
+            List<Cell> cells = result.listCells();
+            for (Cell cell : cells) {
+                byte[] familyName = CellUtil.cloneFamily(cell);
+                byte[] qualifierName = CellUtil.cloneQualifier(cell);
+                byte[] rowKey = CellUtil.cloneRow(cell);
+                byte[] value = CellUtil.cloneValue(cell);
+                //判断id和age字段，这两个字段是整形值
+                if("age".equals(Bytes.toString(qualifierName))  || "id".equals(Bytes.toString(qualifierName))){
+
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowKey)   +"======数据的列族为" +  Bytes.toString(familyName)+"======数据的列名为" +  Bytes.toString(qualifierName) + "==========数据的值为" +Bytes.toInt(value));
+
+                }else{
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowKey)   +"======数据的列族为" +  Bytes.toString(familyName)+"======数据的列名为" +  Bytes.toString(qualifierName) + "==========数据的值为" +Bytes.toString(value));
+
+                }
+            }
+        }
+        table.close();
+    }
+    /**
+     * 查询所有的rowKey比0003小的所有数据
+     */
+    @Test
+    public void rowFilter() throws IOException {
+        Table table = connection.getTable(TableName.valueOf(TABLE_NAME));
+        Scan scan = new Scan();
+
+        BinaryComparator binaryComparator = new BinaryComparator("0003".getBytes());
+        RowFilter rowFilter = new RowFilter(CompareFilter.CompareOp.LESS, binaryComparator);
+        /***
+         * rowFilter需要加上两个参数
+         * 第一个参数就是我们的比较规则
+         * 第二个参数就是我们的比较对象
+         */
+        scan.setFilter(rowFilter);
+
+        ResultScanner scanner = table.getScanner(scan);
+        for (Result result : scanner) {
+            List<Cell> cells = result.listCells();
+            for (Cell cell : cells) {
+                byte[] familyName = CellUtil.cloneFamily(cell);
+                byte[] qualifierName = CellUtil.cloneQualifier(cell);
+                byte[] rowKey = CellUtil.cloneRow(cell);
+                byte[] value = CellUtil.cloneValue(cell);
+                if("age".equals(Bytes.toString(qualifierName))  || "id".equals(Bytes.toString(qualifierName))){
+
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowKey)   +"======数据的列族为" +  Bytes.toString(familyName)+"======数据的列名为" +  Bytes.toString(qualifierName) + "==========数据的值为" +Bytes.toInt(value));
+
+                }else{
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowKey)   +"======数据的列族为" +  Bytes.toString(familyName)+"======数据的列名为" +  Bytes.toString(qualifierName) + "==========数据的值为" +Bytes.toString(value));
+                }
+            }
+        }
+        table.close();
+    }
+
+    /**
+     * 通过familyFilter来实现列族的过滤
+     * 需要过滤，列族名包含f2
+     * f1  f2   hello   world
+     */
+    @Test
+    public void familyFilter() throws IOException {
+        Scan scan = new Scan();
+
+        SubstringComparator sub = new SubstringComparator("f2");
+        FamilyFilter familyFilter = new FamilyFilter(CompareFilter.CompareOp.EQUAL, sub);
+        scan.setFilter(familyFilter);
+        ResultScanner scanner = table.getScanner(scan);
+        for (Result result : scanner) {
+            List<Cell> cells = result.listCells();
+            for (Cell cell : cells) {
+                byte[] family_name = CellUtil.cloneFamily(cell);
+                byte[] qualifier_name = CellUtil.cloneQualifier(cell);
+                byte[] rowkey = CellUtil.cloneRow(cell);
+                byte[] value = CellUtil.cloneValue(cell);
+                if("age".equals(Bytes.toString(qualifier_name))  || "id".equals(Bytes.toString(qualifier_name))){
+
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowkey)   +"======数据的列族为" +  Bytes.toString(family_name)+"======数据的列名为" +  Bytes.toString(qualifier_name) + "==========数据的值为" +Bytes.toInt(value));
+
+                }else{
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowkey)   +"======数据的列族为" +  Bytes.toString(family_name)+"======数据的列名为" +  Bytes.toString(qualifier_name) + "==========数据的值为" +Bytes.toString(value));
+                }
+            }
+        }
+    }
+
+    /**
+     * 列名过滤器 只查询包含name列的值
+     */
+    @Test
+    public void qualifierFilter() throws IOException {
+        Scan scan = new Scan();
+
+        SubstringComparator sub = new SubstringComparator("name");
+        QualifierFilter qualifierFilter = new QualifierFilter(CompareFilter.CompareOp.EQUAL, sub);
+        scan.setFilter(qualifierFilter);
+        ResultScanner scanner = table.getScanner(scan);
+        printResult(scanner);
+    }
+
+    private void printResult(ResultScanner scanner){
+        for (Result result : scanner) {
+            List<Cell> cells = result.listCells();
+            for (Cell cell : cells) {
+                byte[] family_name = CellUtil.cloneFamily(cell);
+                byte[] qualifier_name = CellUtil.cloneQualifier(cell);
+                byte[] rowkey = CellUtil.cloneRow(cell);
+                byte[] value = CellUtil.cloneValue(cell);
+                //判断id和age字段，这两个字段是整形值
+                if("age".equals(Bytes.toString(qualifier_name))  || "id".equals(Bytes.toString(qualifier_name))){
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowkey)   +"======数据的列族为" +  Bytes.toString(family_name)+"======数据的列名为" +  Bytes.toString(qualifier_name) + "==========数据的值为" +Bytes.toInt(value));
+                }else{
+                    System.out.println("数据的rowkey为" +  Bytes.toString(rowkey)   +"======数据的列族为" +  Bytes.toString(family_name)+"======数据的列名为" +  Bytes.toString(qualifier_name) + "==========数据的值为" +Bytes.toString(value));
+                }
+            }
+        }
+    }
+
+    /**
+     * 查询哪些字段值  包含数字8
+     */
+    @Test
+    public void contain8() throws IOException {
+        Scan scan = new Scan();
+        SubstringComparator substringComparator = new SubstringComparator("8");
+        ValueFilter valueFilter = new ValueFilter(CompareFilter.CompareOp.EQUAL, substringComparator);
+        scan.setFilter(valueFilter);
+        ResultScanner scanner = table.getScanner(scan);
+        printResult(scanner);
+    }
+
+
+
 }
