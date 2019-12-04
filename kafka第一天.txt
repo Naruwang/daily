@@ -1,0 +1,295 @@
+kafka消息队列
+
+课程内容回顾：
+ELK课程
+E：elasticsearch 全文检索框架   
+elasticsearch的高级API：聚合查询  
+logstash以及kibana的基本介绍  了解
+
+elasticsearch 整合hbase实现二级索引：
+es实现数据的查询功能，hbase实现数据详情存储的功能
+
+
+课程大纲：
+1、消息队列介绍
+2、常用的消息队列框架
+3、消息队列应用场景  
+4、消息队列两种模式  
+5、kafka消息队列介绍  
+6、kafka的架构模型以及内部细节   重点
+7、kafka的核心组件说明：  重点
+8、kafka集群环境搭建   搞定
+9、kafka集群操作命令   知道
+10、kafka的JavaAPI操作 搞定
+
+
+
+
+1、消息队列基本介绍
+消息：在应用系统之间，传递的数据叫做消息
+队列：排队的模型   先进先出  类似于火车进隧道
+
+标注的消息队列实现
+RabbitMQ： rabbit  message  queue  
+ActiveMQ：支持消息队列当中事务处理
+RocketMQ： 阿里开源的消息队列 rocket  
+
+消息队列的模型：主要是基于pub/sub  publish 、subscribe  发布与订阅模型
+
+
+kafka：linkedin  公司开源提供的  吞吐量非常高，而且消息的处理速度非常快 大数据领域里面大部分都是使用kafka
+kafka不是一个标准的消息队列的实现
+消息队列模型：主要是基于push/poll  推送与拉取
+
+消息队列应用场景
+消息队列的应用场景：
+应用解耦
+异步并行处理
+限流削峰
+消息驱动的系统
+
+消息系统的两种模式：
+点对点：两个人之间互相通信，都是点对点这种模型
+发布订阅：群聊   
+
+
+kafka是一个分布式的消息队列系统
+分布式就是由多个节点组成，一个节点就是一个服务器
+在kafka当中节点叫做broker ，一个节点就是一个broker，一个broker就是一个服务器
+hadoop当中节点  datanode
+hbase当中当中 HMaster以及HRegionServer
+
+磁盘顺序读写
+
+kafka应用场景：
+流式处理：实时处理  数据从出现到产生，在一秒钟以内能够处理完成
+流式计算：程序一旦启动，就会一直运行下去，一旦有数据，就能够马上被处理掉
+
+生产者生产数据到kafka里面去  ，然后通过一些实时处理的框架例如storm或者sparkStreaming或者flink等等
+一些实时处理的框架去处理kafka里面的数据
+
+分布式：肯定是多节点，多台服务器，组织到一起形成一个集群
+
+
+
+kafka的基本架构：
+生产者：producer  主要负责生产数据到 topic里面去
+topic：虚拟的概念，某一类消息的主题，某一类消息都是存放在某一个topic当中
+一个topic有多个partition：一个partition里面有多个segment段，每个segment默认1GB
+一个segment：  一个.index文件  +   一个.log文件
+.log：存放用户真实的产生的数据
+.index 存放的是.log文件的索引数据
+消费者：consumer  主要就是消费topic里面的数据
+conusmer消费到哪一条数据需要进行记录：offset来进行记录  数据的偏移量  每条数据都有唯一的offset
+.index文件：存放的索引文件，用于查找.log文件里面的数据
+
+
+kafka需要依赖zk保存一些节点信息 kakfa紧耦合zookeeper
+kafka当中数据消费的时候，消费者都需要指定属于哪一个消费组
+一个消费组里面，可以有多个消费者
+消费组：同一时间，一个分区里面的数据，只能被一个消费组里面的一个线程进行消费
+
+调大分区的个数：可以加快数据的消费的速度
+
+kafka当中的数据消费出现延迟：加大消费者线程数量，加大分区的个数
+
+
+任意时刻，一个分区里面的数据，只能被一个消费组里面的一个线程进行消费
+
+
+partition的个数与线程的个数
+partition个数  = 线程的个数  刚刚好，一个线程消费一个分区
+partition个数 >  线程的个数  有线程需要去消费多个分区里面的数据
+partition个数  < 线程的个数  有线程在闲置 
+
+kakfa当中副本的策略：使用isr这种策略来维护一个副本列表
+isr  synchronize  replication ：同步完成的副本列表
+主分区：可以有多个副本 ，为了最大程度的同步完成数据，使用多个副本，每个副本都启动线程去复制主分区上面的数据
+尽量的保证副本分区当中的数据与主分区当中的数据一致的
+如果副本分区当中的数据与主分区当中的数据差别太大，将副本分区移除ISR列表
+如果副本分区的心跳时间比较久远，也会将副本分区移除ISR列表
+
+
+kafka的数据的分区策略：
+kafka五个分区：由于某种原因 0,1,2三个分区里面的数据太多，3,4分区里面的数据太少，
+
+如果指定了分区号，直接将数据发送到指定的分区里面去
+如果没有指定分区号，数据带了发送的key，通过key取hashCode决定数据究竟发送到哪一个分区里面去
+如果既没有指定分区号，也没有指定数据key，使用 round-robin fashion  轮询策略
+
+如果使用key来作为分区的依据，key一定要是变化的，保证数据发送到不同的分区里面去
+
+
+分区方式：
+第一种：既没有指定key，也没有指定分区号，使用轮询的方式
+第二种：指定数据key，使用key的hashCode码值来进行分区，一定要注意，key要变化
+第三种：指定分区号来进行分区
+第四种：自定义分区策略
+  props.put("partitioner.class","cn.itcast.kafka.demo1.MyPartitioner");
+
+  //自定义分区策略，不需要指定分区号，如果指定了分区号，还是会将数据发送到指定的分区里面去
+ ProducerRecord<String, String> producerRecord = new ProducerRecord<>("test", "mykey"+i,"这是第" + i + "条message");
+
+
+ 处理完成一个分区里面的数据，就提交一次offset值，记录到对应的分区里面的数据，消费到了哪里来了
+ 
+ 
+kafka的数据消费模型：
+ exactly  once：消费且仅消费一次
+ at  least  once：最少消费一次  出现数据重复消费的问题
+ at  most  once ： 至多消费一次  出现数据丢失的问题
+ 数据重复消费或者数据丢失的原因造成：offset没有管理好
+ 将offset的值给保存到redis里面去或者hbase里面去
+ 默认的offset保存在哪里？？
+ 可以保存到zk里面去，
+ 也可以保存到kafka自带的一个topic里面去  __consumer_offsets
+新的版本都是使用low  level  API进行消费，将数据的offset保存到一个topic里面去了
+ 
+数据消费： 高阶API  high level  API 将offset的值，保存在zk当中了，早期的kafka版本，默认都是使用high level  api进行消费的
+		   低阶API low  level   API  将offset的值，保存在kafka的一个默认的topic里面了
+  
+
+kafka-stream API开发：kafka新版本的一个流失计算的模块，主要用于流式计算，实时计算
+
+使用kafka-stream API实现获取test这个topic里面的数据，然后写入到test2这个topic里面去，
+并且将数据小写转换成为大写
+
+
+kafka的日志寻址机制：
+一个topic由多个partition组成的
+一个partition里面有多个segment文件段
+一个segment里面有两个文件，
+.log文件：存放日志数据的文件
+.index文件：索引文件
+每当.log文件达到1GB的时候，就会产生一个新的segment
+
+第一个segment段：
+-rw-r--r-- 1 root root 10485760 Jul 26 11:48 00000000000000000000.index
+-rw-r--r-- 1 root root     7775 Jul 26 15:54 00000000000000000000.log
+
+第二个segment段：
+-rw-r--r-- 1 root root 10485760 Jul 26 11:48 00000000000000789546.index
+-rw-r--r-- 1 root root     7775 Jul 26 15:54 00000000000000789546.log
+
+第三个segment段：
+-rw-r--r-- 1 root root 10485760 Jul 26 11:48 00000000000000874569.index
+-rw-r--r-- 1 root root     7775 Jul 26 15:54 00000000000000874569.log
+
+第四个segment段：
+-rw-r--r-- 1 root root 10485760 Jul 26 11:48 00000000000000984561.index
+-rw-r--r-- 1 root root     7775 Jul 26 15:54 00000000000000984561.log
+
+
+
+下一个segment的文件的名字，是上一个segment文件最后一条数据的offset值
+查找
+654789  offset  在哪个segment文件段里面，文件里里面第多少条数据
+折半查找  二分查找 来查找数据的offset究竟在哪一个segment段里面去
+
+如果确定了数据的offset在第一个segment里面，怎么继续快速的找到是哪一行数据
+.index文件里面存放了一些数据索引值，不会将.log文件里面每一条数据都进行索引，每过一段就索引一次
+减少索引文件的大小
+索引文件是比较稀疏的，没有将所有的数据都建立索引值 避免索引文件太大
+
+
+offset
+157894  在第358行
+257894  第 514行
+354678  第612行
+514789  第 1200行
+714895  第1500行
+
+还是使用折半查找
+
+
+kafka的log的寻址机制，背下来
+1、
+第一步：使用折半查找，找数据属于哪一个segment段
+第二步：通过.index文件来查找数据究竟对应哪一条数据
+
+
+segment段的命名规则：
+下一个segment起始的数据name值，上上一个segment文件最后一条数据的offset值
+
+
+
+kafka当中如何保证数据不丢失：
+1、生产者如何保证数据不丢失  使用ack来确认
+2、消费者如何保证数据不丢失  使用offset来记录
+3、broker如何保证数据不丢失  副本机制
+
+
+生产者生产数据：同步的发送以及异步发送
+同步：发送一批数据给kafka后，等待kafka返回结果
+1、生产者等待10s，如果broker没有给出ack相应，就认为失败。
+2、生产者重试3次，如果还没有响应，就报错
+
+异步：发送一批数据给kafka，只是提供一个回调函数。
+1、先将数据保存在生产者端的buffer中。buffer大小是2万条 
+2、满足数据阈值或者数量阈值其中的一个条件就可以发送数据。
+3、发送一批数据的大小是500条
+
+producer的buffer缓冲区可以装2W条数据，如果数据一直没有发送出去，
+如果buffer满了，我们可以设置，设置生产者阻塞，或者设置清空buffer
+
+broker如何保证数据不丢失：使用副本的机制，来同步主分区当中的数据
+
+
+消费者：优先选择主分区当中的数据进行消费，主分区当中的数据是最完整的
+如何记录消费到了哪一条避免重复消费或者数据丢失？？？
+通过offset来进行记录，可以将offset保存到redis或者hbase里面去等等，下次消费的时候就将offset取出来，去进行消费
+
+
+
+课程总结：
+
+1、消息队列介绍 了解一下
+2、常见消息队列系统   
+3、消息队列应用场景：
+	异步处理
+	应用解耦
+	限流削峰
+	
+4、消息队列的两种模式 
+	点对点：两个人之间互相通信，都是点对点这种模型
+	pub/sub：发布与订阅
+	kakfa：push/poll
+	
+5、kafka的架构： 知道
+	producer：消息生产者，生产数据，push到kafka的topic里面去
+	consumer：消息消费者，主要用于消费数据。 同一时刻，一个分区里面的数据，只能被一个消费者组里面的一个线程消费
+			增加分区的个数：可以提高消费的并行度
+	broker：服务器
+	topic：虚拟的概念，某一类消息的主题，某一类消息都是存放在某一个topic当中
+	partition：分区  一个topic可以有多个partition，每个partition里面的数据都是有序的
+	segment： 一个partition里面有多个segment段，一个segment段包含两个文件.log文件  .index文件
+	.log：存放用户真实的产生的数据
+	.index：存放.log文件的索引数据
+	
+6.kakfa集群环境搭建  搞定
+7、kafka的集群的管理操作  包括创建topic，查看topic，生产数据，消费数据，添加分区
+
+8、kafka的JavaAPI操作 搞定   
+9、kafka当中的log寻址机制 ：  二分查找发，折半查找
+	
+10、kafka当中数据不丢失机制
+	生产者数据不丢失：使用ack机制
+	broker数据不丢失：使用副本策略
+	消费者数据不丢失：记录offset
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

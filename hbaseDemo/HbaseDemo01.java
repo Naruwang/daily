@@ -339,7 +339,96 @@ public class HbaseDemo01 {
         ResultScanner scanner = table.getScanner(scan);
         printResult(scanner);
     }
+    /**
+     * select * from myuser where name != '刘备'
+     */
+    @Test
+    public void singleColumnValueFilter() throws IOException {
+        Scan scan = new Scan();
+        SingleColumnValueFilter singleColumnValueFilter = new SingleColumnValueFilter("f1".getBytes(), "name".getBytes(), CompareFilter.CompareOp.EQUAL, "刘备".getBytes());
+        scan.setFilter(singleColumnValueFilter);
+        ResultScanner scanner = table.getScanner(scan);
+        printResult(scanner);
+    }
 
+    /**
+     * 查询rowkey前缀以  00开头的所有的数据
+     */
+    @Test
+    public void prefixFilter() throws IOException {
+        Scan scan = new Scan();
 
+        //过滤rowkey，以00开头
+        PrefixFilter prefixFilter = new PrefixFilter("00".getBytes());
+        scan.setFilter(prefixFilter);
+        ResultScanner scanner = table.getScanner(scan);
+        printResult(scanner);
+    }
 
+    /**
+     * hbase当中的分页
+     */
+    @Test
+    public void hbasePageFilter() throws IOException{
+        int pageNum = 3;
+        int pageSize = 2;
+        Scan scan = new Scan();
+
+        if (pageNum == 1){
+            //获取第一页的数据
+            scan.setMaxResultSize(pageSize);
+            scan.setStartRow("".getBytes());
+
+            //使用分页过滤器来实现数据的分页
+            PageFilter pageFilter = new PageFilter(pageSize);
+            scan.setFilter(pageFilter);
+            ResultScanner scanner = table.getScanner(scan);
+            printResult(scanner);
+        }else{
+            String startRow = "";
+            int scanDatas = (pageNum - 1) * pageSize + 1;
+            scan.setMaxResultSize(scanDatas);//向前扫描多少
+            PageFilter pageFilter = new PageFilter(scanDatas);
+            scan.setFilter(pageFilter);
+            ResultScanner scanner = table.getScanner(scan);
+            for (Result result : scanner) {
+                byte[] row = result.getRow();
+                startRow = Bytes.toString(row);
+            }
+
+            scan.setStartRow(startRow.getBytes());
+            scan.setMaxResultSize(pageSize);
+            PageFilter pageFilter1 = new PageFilter(pageSize);
+            scan.setFilter(pageFilter1);
+            ResultScanner scanner1 = table.getScanner(scan);
+            printResult(scanner1);
+        }
+    }
+    /**
+     * 查询  f1 列族  name  为刘备数据值
+     * 并且rowkey 前缀以  00开头数据
+     */
+    @Test
+    public void filterList() throws IOException{
+        Scan scan = new Scan();
+
+        SingleColumnValueFilter singleColumnValueFilter = new SingleColumnValueFilter("f1".getBytes(), "name".getBytes(), CompareFilter.CompareOp.EQUAL, "刘备".getBytes());
+        PrefixFilter prefixFilter = new PrefixFilter("00".getBytes());
+
+        FilterList filterList = new FilterList();
+        filterList.addFilter(singleColumnValueFilter);
+        filterList.addFilter(prefixFilter);
+        scan .setFilter(filterList);
+        ResultScanner scanner = table.getScanner(scan);
+        printResult(scanner);
+    }
+
+    /**
+     * 删除数据
+     */
+    @Test
+    public void deleteData() throws IOException{
+        Delete delete = new Delete("0003".getBytes());
+        table.delete(delete);
+    }
 }
